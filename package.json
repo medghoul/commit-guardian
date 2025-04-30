@@ -6,6 +6,6 @@
       "husky-setup": "./husky-setup.sh"
     },
     "keywords": ["git", "hooks", "husky", "eslint", "prettier", "commitlint"],
-    "author": "Your Name",
+    "author": "Mohamed Hamza Ghoul",
     "license": "MIT"
   }
