@@ -1,0 +1,11 @@
+{
+    "name": "husky-setup",
+    "version": "1.0.0",
+    "description": "Universal Git hooks setup script for Node.js projects",
+    "bin": {
+      "husky-setup": "./husky-setup.sh"
+    },
+    "keywords": ["git", "hooks", "husky", "eslint", "prettier", "commitlint"],
+    "author": "Your Name",
+    "license": "MIT"
+  }
