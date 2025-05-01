@@ -10,6 +10,26 @@ NPM_VERSION=$(npm -v | cut -d. -f1)
 echo "Detected Node.js version: $(node -v)"
 echo "Detected npm version: $(npm -v)"
 
+# Determine if we're using ES Modules or CommonJS
+USE_ES_MODULES=false
+if [ "$NODE_VERSION" -ge "14" ]; then
+  # Check for "type": "module" in package.json
+  if grep -q '"type"\s*:\s*"module"' package.json; then
+    USE_ES_MODULES=true
+    echo "Detected ES Modules (type: module) in package.json"
+  else
+    # Scan for ES import statements in JS files
+    if grep -r --include="*.js" "import\s\+.*\s\+from" . > /dev/null || grep -r --include="*.js" "export\s\+default" . > /dev/null; then
+      USE_ES_MODULES=true
+      echo "Detected ES Modules syntax in JS files"
+    else
+      echo "Detected CommonJS modules"
+    fi
+  fi
+else
+  echo "Node.js version < 14, using CommonJS configuration"
+fi
+
 # Get project name from package.json
 if [ -f "package.json" ]; then
   PROJECT_NAME=$(node -e "try { console.log(require('./package.json').name || 'this project') } catch(e) { console.log('this project') }")
@@ -76,7 +96,7 @@ echo "📦 Installing dependencies..."
 
 # Use a different approach based on Node.js version detected
 if [[ "$NODE_VERSION" -lt "16" ]]; then
-  # Use np, for good compatibility with Node.js 14 with Husky v4 approach
+  # Use approach for good compatibility with Node.js 14 with Husky v4 approach
   echo "Setting up Husky with backward compatibility for Node.js 14"
   
   # First try to install lint-staged and husky (npm will figure out compatible versions)
@@ -114,7 +134,7 @@ if [[ "$NODE_VERSION" -lt "16" ]]; then
     }
     
     // Write the updated package.json
-    fs.writeFileSync('package.json', JSON.stringify(packageJson, null, 2));
+    fs.writeFileSync('package.json', JSON.stringify(packageJson, null, 2) + '\n');
     console.log('Updated package.json with Husky configuration');
     "
   else
@@ -140,7 +160,7 @@ if [[ "$NODE_VERSION" -lt "16" ]]; then
     }
     
     // Write the updated package.json
-    fs.writeFileSync('package.json', JSON.stringify(packageJson, null, 2));
+    fs.writeFileSync('package.json', JSON.stringify(packageJson, null, 2) + '\n');
     console.log('Updated package.json with necessary scripts');
     "
     
@@ -172,7 +192,7 @@ else
   }
   
   // Write the updated package.json
-  fs.writeFileSync('package.json', JSON.stringify(packageJson, null, 2));
+  fs.writeFileSync('package.json', JSON.stringify(packageJson, null, 2) + '\n');
   console.log('Updated package.json with necessary scripts');
   "
   
@@ -180,11 +200,32 @@ else
   npx husky install || echo "Failed to run husky install, continuing anyway..."
 fi
 
-# Create basic configuration files if tools are installed but configs are missing
+# Create ESLint configuration based on Node.js version and detected module format
 if [ "$HAS_ESLINT" = true ] && [ ! -f ".eslintrc.json" ] && [ ! -f ".eslintrc.js" ]; then
-  echo "Creating basic ESLint configuration..."
-  # Create a flexible ESLint config that works in all versions
-  cat > .eslintrc.json << 'EOF'
+  echo "Creating ESLint configuration for $([ "$USE_ES_MODULES" = true ] && echo "ES Modules" || echo "CommonJS")..."
+  
+  if [ "$USE_ES_MODULES" = true ]; then
+    # Create ESLint config for ES Modules
+    cat > .eslintrc.json << 'EOF'
+{
+  "env": {
+    "node": true,
+    "es6": true
+  },
+  "extends": "eslint:recommended",
+  "parserOptions": {
+    "ecmaVersion": "latest",
+    "sourceType": "module"
+  },
+  "rules": {
+    "no-console": "warn",
+    "no-unused-vars": "warn"
+  }
+}
+EOF
+  else
+    # Create ESLint config for CommonJS
+    cat > .eslintrc.json << 'EOF'
 {
   "env": {
     "node": true,
@@ -200,8 +241,10 @@ if [ "$HAS_ESLINT" = true ] && [ ! -f ".eslintrc.json" ] && [ ! -f ".eslintrc.js
   }
 }
 EOF
+  fi
 fi
 
+# Create Prettier configuration
 if [ "$HAS_PRETTIER" = true ] && [ ! -f ".prettierrc" ] && [ ! -f ".prettierrc.js" ]; then
   echo "Creating basic Prettier configuration..."
   cat > .prettierrc << 'EOF'
@@ -215,29 +258,59 @@ if [ "$HAS_PRETTIER" = true ] && [ ! -f ".prettierrc" ] && [ ! -f ".prettierrc.j
 EOF
 fi
 
+# Create .prettierignore file to prevent continual formatting changes
+if [ "$HAS_PRETTIER" = true ] && [ ! -f ".prettierignore" ]; then
+  echo "Creating .prettierignore file to prevent formatting conflicts..."
+  cat > .prettierignore << 'EOF'
+# Configuration files that shouldn't be reformatted
+.husky/
+commitlint.config.js
+package.json
+package-lock.json
+*.lock
+*.bak
+
+# Common build directories
+node_modules/
+dist/
+build/
+coverage/
+.git/
+EOF
+fi
+
 # Create .eslintignore file to exclude problematic files
-if [ "$HAS_ESLINT" = true ]; then
-  echo "Creating .eslintignore file..."
+if [ "$HAS_ESLINT" = true ] && [ ! -f ".eslintignore" ]; then
+  echo "Creating .eslintignore file for ESLint..."
   cat > .eslintignore << 'EOF'
+# Node modules and build artifacts
 node_modules/
 dist/
 build/
 coverage/
 .husky/
 *.min.js
+
+# Configuration files
 package.json
 package-lock.json
+commitlint.config.js
+.prettierignore
+.eslintignore
 
-# Files with parsing errors
-app/common/mongooseDbConnection.js
-app/controllers/diagController.js
-app/controllers/lastCallController.js
+# Files with potential parsing errors
+**/mongooseDbConnection.js
+**/diagController.js
+**/lastCallController.js
 EOF
 fi
 
-# Create commitlint.config.js
-cat > commitlint.config.js << 'EOF'
-module.exports = {
+# Create commitlint.config.js in a format compatible with the detected modules format
+echo "Creating commitlint configuration..."
+if [ "$USE_ES_MODULES" = true ] && [ "$NODE_VERSION" -ge "14" ]; then
+  # ES Modules format for commitlint
+  cat > commitlint.config.js << 'EOF'
+export default {
   extends: ['@commitlint/config-conventional'],
   rules: {
     'body-leading-blank': [1, 'always'],
@@ -248,7 +321,7 @@ module.exports = {
     'subject-case': [
       2,
       'never',
-      ['sentence-case', 'start-case', 'pascal-case', 'upper-case'],
+      ['sentence-case', 'start-case', 'pascal-case', 'upper-case']
     ],
     'subject-empty': [2, 'never'],
     'subject-full-stop': [2, 'never', '.'],
@@ -268,12 +341,53 @@ module.exports = {
         'refactor',
         'revert',
         'style',
-        'test',
-      ],
-    ],
-  },
+        'test'
+      ]
+    ]
+  }
 };
 EOF
+else
+  # CommonJS format for commitlint
+  cat > commitlint.config.js << 'EOF'
+module.exports = {
+  extends: ['@commitlint/config-conventional'],
+  rules: {
+    'body-leading-blank': [1, 'always'],
+    'body-max-line-length': [2, 'always', 100],
+    'footer-leading-blank': [1, 'always'],
+    'footer-max-line-length': [2, 'always', 100],
+    'header-max-length': [2, 'always', 100],
+    'subject-case': [
+      2,
+      'never',
+      ['sentence-case', 'start-case', 'pascal-case', 'upper-case']
+    ],
+    'subject-empty': [2, 'never'],
+    'subject-full-stop': [2, 'never', '.'],
+    'type-case': [2, 'always', 'lower-case'],
+    'type-empty': [2, 'never'],
+    'type-enum': [
+      2,
+      'always',
+      [
+        'build',
+        'chore',
+        'ci',
+        'docs',
+        'feat',
+        'fix',
+        'perf',
+        'refactor',
+        'revert',
+        'style',
+        'test'
+      ]
+    ]
+  }
+};
+EOF
+fi
 
 # Create Husky hooks
 echo "🔧 Creating Git hooks..."
@@ -294,7 +408,7 @@ if [ "$HAS_PRETTIER" = true ]; then
 # Auto-format code with Prettier
 echo "🔍 Formatting code with Prettier..."
 # Use npx to ensure compatibility across different setups
-npx prettier --write . || echo "⚠️ Prettier failed but continuing anyway"
+npx prettier --write . --ignore-path .prettierignore || echo "⚠️ Prettier failed but continuing anyway"
 
 EOF
 fi
@@ -304,7 +418,7 @@ if [ "$HAS_ESLINT" = true ]; then
   cat >> .husky/pre-commit << 'EOF'
 # Run ESLint to check code quality (warnings only)
 echo "🔍 Checking code with ESLint (warnings only)..."
-npx eslint . --fix || echo "⚠️ ESLint found issues but continuing anyway (warnings-only mode)"
+npx eslint . --fix --ignore-path .eslintignore || echo "⚠️ ESLint found issues but continuing anyway (warnings-only mode)"
 
 EOF
 fi
@@ -409,59 +523,26 @@ echo "Setting up Git hooks..."
 GIT_DIR=$(git rev-parse --git-dir)
 
 # Copy hooks directly instead of symlinks
-cp .husky/pre-commit "$GIT_DIR/hooks/"
-cp .husky/commit-msg "$GIT_DIR/hooks/"
+cp .husky/pre-commit "$GIT_DIR/hooks/" 2>/dev/null || echo "Failed to copy pre-commit hook"
+cp .husky/commit-msg "$GIT_DIR/hooks/" 2>/dev/null || echo "Failed to copy commit-msg hook"
 
 # Make them executable
-chmod +x "$GIT_DIR/hooks/pre-commit" "$GIT_DIR/hooks/commit-msg"
+chmod +x "$GIT_DIR/hooks/pre-commit" "$GIT_DIR/hooks/commit-msg" 2>/dev/null || echo "Failed to make hooks executable"
 
-# Get project description for the README
-if [ -f "package.json" ]; then
-  PROJECT_DESCRIPTION=$(node -e "try { console.log(require('./package.json').description || 'Enforce code quality and consistency') } catch(e) { console.log('Enforce code quality and consistency') }")
-else
-  PROJECT_DESCRIPTION="Enforce code quality and consistency"
-fi
+# Create a fixed README file with no runtime-dependent values
+cat > .husky/README.md << 'EOF'
+# Git Hooks
 
-# Create README file with information
-cat > .husky/README.md << EOF
-# Git Hooks for $PROJECT_NAME
-
-This directory contains Git hooks configuration using Husky. These hooks automatically run at specific points in the Git workflow to $PROJECT_DESCRIPTION.
-
-## Environment Information
-- Node.js: $(node -v)
-- npm: v$(npm -v)
-- Project: $PROJECT_NAME
-
-## Tools Detection
-
-The setup script detected:
-- ESLint: $([ "$HAS_ESLINT" = true ] && echo "✅ Installed and used" || echo "❌ Not available")
-- Prettier: $([ "$HAS_PRETTIER" = true ] && echo "✅ Installed and used" || echo "❌ Not available")
-
-## Configuration Options
-- ESLint warnings only: ✅ Enabled (errors won't block commits)
+This directory contains Git hooks configuration using Husky. These hooks automatically run at specific points in the Git workflow to enforce code quality and commit standards.
 
 ## Hooks Configuration
 
 ### Pre-commit Hook
 
-The \`pre-commit\` hook runs before each commit and performs the following checks:
-EOF
+The `pre-commit` hook runs before each commit and performs the following checks:
 
-if [ "$HAS_PRETTIER" = true ]; then
-  cat >> .husky/README.md << 'EOF'
 - Prettier to automatically format your code
-EOF
-fi
-
-if [ "$HAS_ESLINT" = true ]; then
-  cat >> .husky/README.md << 'EOF'
-- ESLint to analyze code for potential errors and enforce coding standards (warnings only - errors won't block commits)
-EOF
-fi
-
-cat >> .husky/README.md << 'EOF'
+- ESLint to analyze code for potential errors and enforce coding standards (warnings only)
 
 If any of these checks fail, the commit will be aborted, allowing you to fix the issues before committing.
 
@@ -516,9 +597,23 @@ else
   echo "- Prettier: ❌ Not used (not installed)"
 fi
 
+echo "- Module format: $([ "$USE_ES_MODULES" = true ] && echo "ES Modules" || echo "CommonJS")"
+echo "- Node.js compatibility: v${NODE_VERSION}+"
+
 echo ""
 echo "✅ Husky configuration completed successfully for $PROJECT_NAME!"
 echo "Your Git hooks are now active in $PROJECT_NAME."
 echo ""
 echo "Note: ESLint errors will not block commits, but will still show warnings."
-echo "To bypass all hooks: git commit -m \"your message\" --no-verify" 
+echo "To bypass all hooks: git commit -m \"your message\" --no-verify"
+echo ""
+echo "➡️ After you've confirmed everything works, you can delete husky-setup.sh"
+
+# Create a first commit to make sure the configuration files are committed
+echo ""
+echo "💡 TIP: To avoid configuration files being constantly modified,"
+echo "you should commit them now with:"
+echo ""
+echo "git add .husky/ .prettierignore .eslintignore commitlint.config.js .eslintrc.json"
+echo "git commit --no-verify -m \"chore(hooks): setup git hooks with stable configuration\""
+echo "" 
