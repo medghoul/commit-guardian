@@ -1,7 +1,6 @@
-# 🔄 husky-setup
+# 🔄 commit-guardian
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![npm version](https://img.shields.io/npm/v/husky-setup.svg?style=flat)](https://www.npmjs.com/package/husky-setup)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](http://makeapullrequest.com)
 
 > Universal Git hooks setup script for Node.js projects
@@ -24,33 +23,33 @@ A zero-configuration script that automatically sets up Git hooks for code qualit
 
 ```bash
 # Download and execute the script
-curl -o- https://raw.githubusercontent.com/username/husky-setup/main/husky-setup.sh | bash
+curl -o- husky-setup.sh https://raw.githubusercontent.com/medghoul/commit-guardian/master/husky-setup.sh | bash
 
 # Or with wget
-wget -qO- https://raw.githubusercontent.com/username/husky-setup/main/husky-setup.sh | bash
+wget -qO- https://raw.githubusercontent.com/medghoul/commit-guardian/master/husky-setup.sh | bash
 ```
 
 ### Option 2: npm Installation
 
 ```bash
 # Global installation
-npm install -g husky-setup
+npm install -g commit-guardian
 cd your-project
-husky-setup
+commit-guardian
 
 # Or as a dev dependency
-npm install --save-dev husky-setup
-npx husky-setup
+npm install --save-dev commit-guardian
+npx commit-guardian
 ```
 
 ### Option 3: Manual Download
 
 ```bash
 # Clone the repository
-git clone https://github.com/username/husky-setup.git
+git clone https://github.com/medghoul/commit-guardian.git
 
 # Copy the script to your project
-cp husky-setup/husky-setup.sh your-project/
+cp commit-guardian/husky-setup.sh your-project/
 
 # Make it executable and run
 cd your-project
